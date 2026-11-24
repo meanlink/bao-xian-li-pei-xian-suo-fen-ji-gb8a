@@ -36,7 +36,20 @@ docker compose exec -T backend python scripts/seed_demo.py
 
 仅调查中或待核赔案件的待核查线索可提交证据。已提交但待复核或待补正的记录会阻止核赔结案，案件详情显示对应数量和入口。主管决定会更新线索状态，历史模型分数保留原值。
 
-后端启动时幂等创建复核表和补件跟进表，已有数据库卷可直接升级。重复运行演示 seed 会保留已经处理的理赔案件、线索和复核记录。
+后端启动时幂等创建复核表、补件跟进表与付款表（迁移 `002`–`004`），已有数据库卷可直接升级。重复运行演示 seed 会保留已经处理的理赔案件、线索、复核记录与付款单据。
+
+## 核赔付款
+
+核赔通过后，风险主管在待核赔案件上登记**核定金额**，作为本案分笔付款的总额度上限。核定金额不能超过报案损失金额；已有付款占用时，核定额不能下调到已占用额度之下。
+
+- **开单即占款**：每张付款单开出立即占用额度。所有额度校验在单事务内对案件行加锁（`SELECT … FOR UPDATE`），并发开单串行化，任何一笔都不会使累计占款超出核定额。
+- **回执驱动状态**：银行回执未到前单据保持「占款中」；回执确认且金额一致转「已实付」；银行明确拒付转「已拒付」并退回可用额度，可重新开单。
+- **异常挂起**：回执单号或金额与付款单对不上时单据「已挂起」，继续占款，由主管人工确认实付或拒付退单。
+- **回执幂等**：回执单号全局唯一。同一回执重复提交直接返回既有记录，不产生第二次入账；回执号跨付款单复用会被拒绝。
+- **自动结案**：实付累计等于核定额、且没有占款中或挂起的单据时案件自动结案。已核定的案件不能再走手动结案，必须实付满额；未核定的零赔付案件仍可手动结案。结案后全部付款操作冻结。
+- 案件详情页「核赔付款」面板展示核定、已实付、占款中（含挂起）、还可开单金额，以及每笔付款单的收款方、状态、去向和全部银行回执流水。
+
+演示案件 `CLM-261106-0006` 已核定 10 万元，含一笔已实付和一笔占款中付款单，可直接练习回执登记、挂起处理与自动结案。
 
 ## 共享枚举
 
@@ -47,3 +60,5 @@ docker compose exec -T backend python scripts/seed_demo.py
 案件、风险与调查任务枚举在 `backend/src/constants/enums.py` 和 `frontend/src/utils/constants.js`。线索状态、凭证来源和复核状态用于 `backend/migrations/001_schema.sql`、`backend/migrations/002_clue_reviews.sql`、`backend/src/schemas/clue_reviews.py` 和 `frontend/src/utils/constants.js`。
 
 补件渠道 `phone / sms / email` 见 `backend/migrations/003_document_followups.sql`、`backend/src/schemas/claims.py` 与 `frontend/src/pages/documentTriage.js`。队列状态由 `backend/src/services/document_triage_service.py` 计算，前端负责展示与筛选。
+
+付款单状态 `reserved / paid / rejected / suspended`、回执结果 `confirmed / rejected / mismatch` 见 `backend/migrations/004_payments.sql`、`backend/src/constants/enums.py`、`backend/src/schemas/payments.py` 与 `frontend/src/utils/constants.js`。额度占用与状态机逻辑集中在 `backend/src/services/payment_service.py`。

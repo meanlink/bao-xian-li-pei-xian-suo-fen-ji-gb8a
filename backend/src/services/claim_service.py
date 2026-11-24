@@ -101,7 +101,7 @@ def complete_task(task_id, payload, user_id):
 
 def adjudicate(claim_id, user_id):
     with get_conn() as conn:
-        claim = conn.execute("SELECT status FROM claims WHERE id=%s FOR UPDATE", (claim_id,)).fetchone()
+        claim = conn.execute("SELECT status, approved_amount FROM claims WHERE id=%s FOR UPDATE", (claim_id,)).fetchone()
         if not claim:
             raise ValueError("案件不存在")
         if claim["status"] != "adjudicating":
@@ -111,6 +111,15 @@ def adjudicate(claim_id, user_id):
             raise PermissionError("仍有未完成的调查任务")
         if unresolved_review_count(conn, claim_id):
             raise PermissionError("仍有待复核或待补正的线索证据，不能核赔结案")
+        if claim["approved_amount"] is not None:
+            funds = conn.execute(
+                """SELECT COALESCE(sum(amount) FILTER (WHERE status IN ('reserved','suspended')),0) AS open_funds,
+                          COALESCE(sum(amount) FILTER (WHERE status='paid'),0) AS paid
+                   FROM payment_orders WHERE claim_id=%s""",
+                (claim_id,),
+            ).fetchone()
+            if funds["open_funds"] > 0 or funds["paid"] < claim["approved_amount"]:
+                raise PermissionError("本案已核定付款金额，需实付满核定额后由付款流程自动结案")
         row = conn.execute("UPDATE claims SET status='closed', updated_at=now() WHERE id=%s RETURNING *", (claim_id,)).fetchone()
         record_in_transaction(conn, user_id, "claim_adjudicated", claim_id, {"result": "closed"})
     return row_claim(row)

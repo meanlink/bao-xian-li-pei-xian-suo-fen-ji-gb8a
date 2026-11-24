@@ -15,6 +15,7 @@ claims = [
     ("CLM-261103-0003", "PA-2026-0031", "孙立诚", "水灾", date(2026,11,3), Decimal("236000"), "沿海", "13800003333", ["身份证明","事故证明","损失清单"], ["身份证明","事故证明","损失清单"], [], "complete", "initial_review", None, True),
     ("CLM-261104-0004", "PA-2026-0045", "周婉清", "医疗", date(2026,11,4), Decimal("42000"), "山区", "13800004444", ["身份证明","事故证明","损失清单"], ["身份证明","事故证明","损失清单"], [], "complete", "modeled", 0.61, False),
     ("CLM-261105-0005", "PA-2026-0052", "何志远", "火灾", date(2026,11,5), Decimal("510000"), "园区", "13800005555", ["身份证明","事故证明","损失清单"], ["身份证明","事故证明","损失清单"], [], "complete", "investigating", 0.86, True),
+    ("CLM-261106-0006", "PA-2026-0061", "郑柏川", "车损", date(2026,11,6), Decimal("120000"), "都市", "13800006666", ["身份证明","事故证明","损失清单"], ["身份证明","事故证明","损失清单"], [], "complete", "adjudicating", 0.41, False),
 ]
 
 with get_conn() as conn:
@@ -39,4 +40,37 @@ with get_conn() as conn:
             conn.execute("INSERT INTO investigation_tasks(claim_id,assignee,priority,status,due_date,scope) SELECT %s,'陈默','urgent','assigned',%s,'核对现场照片 EXIF、维修厂报价单与气象站记录' WHERE NOT EXISTS (SELECT 1 FROM investigation_tasks WHERE claim_id=%s)", (claim_id, date.today()+timedelta(days=2), claim_id))
         if claim_no == "CLM-261104-0004":
             conn.execute("INSERT INTO risk_clues(claim_id,clue_type,severity,description,evidence,status,created_by) SELECT %s,'历史频繁出险','medium','近 12 个月同类报案 3 次','保单 PA-2026-0045 历史赔案索引','open',id FROM users WHERE username='manager@claims.local' AND NOT EXISTS (SELECT 1 FROM risk_clues WHERE claim_id=%s AND clue_type='历史频繁出险')", (claim_id, claim_id))
+        if claim_no == "CLM-261106-0006":
+            # 核赔通过：核定 10 万，演示一笔已实付、一笔占款中，剩余额度仍可开单
+            conn.execute(
+                """INSERT INTO payment_approvals(claim_id, approved_amount, note, created_by)
+                   SELECT %s, 100000, '核定车损及施救费用，按核定金额分笔支付', id
+                   FROM users WHERE username='manager@claims.local'
+                   ON CONFLICT(claim_id) DO NOTHING""",
+                (claim_id,),
+            )
+            conn.execute("UPDATE claims SET approved_amount=100000 WHERE id=%s AND approved_amount IS NULL", (claim_id,))
+            conn.execute(
+                """INSERT INTO payment_orders(claim_id, order_no, sequence_no, payee_name, payee_account, bank_name, amount, purpose, status, created_by, paid_at)
+                   SELECT %s, 'PAY-261106-0006-001', 1, '郑柏川', '6222 0000 1111 2222', '工商银行城南支行', 60000, '首笔车损维修款', 'paid', id, now()
+                   FROM users WHERE username='manager@claims.local'
+                   AND NOT EXISTS (SELECT 1 FROM payment_orders WHERE claim_id=%s AND sequence_no=1)""",
+                (claim_id, claim_id),
+            )
+            first_order = conn.execute("SELECT id FROM payment_orders WHERE claim_id=%s AND sequence_no=1", (claim_id,)).fetchone()
+            if first_order:
+                conn.execute(
+                    """INSERT INTO payment_receipts(receipt_no, order_id, received_amount, result, note, recorded_by)
+                       SELECT 'RCV-261106-001', %s, 60000, 'confirmed', '银行确认首笔赔款到账', id
+                       FROM users WHERE username='manager@claims.local'
+                       ON CONFLICT(receipt_no) DO NOTHING""",
+                    (first_order["id"],),
+                )
+            conn.execute(
+                """INSERT INTO payment_orders(claim_id, order_no, sequence_no, payee_name, payee_account, bank_name, amount, purpose, created_by)
+                   SELECT %s, 'PAY-261106-0006-002', 2, '郑柏川', '6222 0000 1111 2222', '工商银行城南支行', 25000, '施救及残值处理费用', id
+                   FROM users WHERE username='manager@claims.local'
+                   AND NOT EXISTS (SELECT 1 FROM payment_orders WHERE claim_id=%s AND sequence_no=2)""",
+                (claim_id, claim_id),
+            )
 print('seed_demo completed idempotently')

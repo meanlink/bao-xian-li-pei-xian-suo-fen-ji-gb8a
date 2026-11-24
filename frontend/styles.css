@@ -49,3 +49,9 @@
 .triage-error{margin:0;color:oklch(44% .16 25)}
 @media(max-width:950px){.triage-row{grid-template-columns:1fr 1fr}.triage-actions{justify-items:start}}
 @media(max-width:550px){.triage-row{grid-template-columns:1fr}.triage-date{display:none}}
+
+.payment-summary .kv-item{background:#f8f9fc}
+#paymentPanel .table td{padding:13px 14px}
+#paymentPanel .btn-danger{border:1px solid #f5c6cf}
+.payment-summary{margin-bottom:4px}
+@media(max-width:680px){.payment-summary{grid-template-columns:repeat(2,1fr)}}

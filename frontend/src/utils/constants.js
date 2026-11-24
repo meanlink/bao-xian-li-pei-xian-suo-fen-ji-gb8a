@@ -12,3 +12,9 @@ export const clueEvidenceSource = {official_record:'官方记录', original_medi
 export const clueReviewClaimStatuses = ['investigating', 'adjudicating'];
 
 export function canTriage(role){return role === 'intake_agent' || role === 'risk_manager'}
+
+export const paymentOrderStatus = {reserved:'占款中', paid:'已实付', rejected:'已拒付', suspended:'已挂起'};
+export const paymentStatusBadge = {reserved:'badge-amber', paid:'badge-mint', rejected:'badge-gray', suspended:'badge-red'};
+export const receiptResult = {confirmed:'确认到账', rejected:'银行拒付', mismatch:'信息不符'};
+export function isManager(role){return role === 'risk_manager'}
+export function money2(value){return `¥${Number(value || 0).toLocaleString('zh-CN',{minimumFractionDigits:2,maximumFractionDigits:2})}`}

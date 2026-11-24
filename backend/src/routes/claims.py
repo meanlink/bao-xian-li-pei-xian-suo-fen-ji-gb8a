@@ -3,6 +3,7 @@ from src.schemas.claims import ClaimCreate, DocumentVerify, InvestigationCreate,
 from src.services.claim_service import list_claims, get_claim, verify_documents, model_claim, assign_task, complete_task, adjudicate, get_clues, get_tasks
 from src.services.clue_review_service import unresolved_review_count
 from src.services.document_triage_service import TRIAGE_ROLES, latest_followup
+from src.services.payment_service import get_payment_overview
 from src.utils.auth import current_user, require_roles
 from src.utils.db import get_conn
 from src.utils.audit import record
@@ -35,7 +36,8 @@ def claim_detail(claim_id: int, user=Depends(current_user)):
     with get_conn() as conn:
         unresolved_reviews = unresolved_review_count(conn, claim_id)
         followup = latest_followup(conn, claim_id) if user["role"] in TRIAGE_ROLES else None
-    return {"claim": item, "clues": get_clues(claim_id), "tasks": [task for task in get_tasks() if task["claim_id"] == claim_id], "unresolved_clue_reviews": unresolved_reviews, "document_followup": followup}
+    payment = get_payment_overview(claim_id)
+    return {"claim": item, "clues": get_clues(claim_id), "tasks": [task for task in get_tasks() if task["claim_id"] == claim_id], "unresolved_clue_reviews": unresolved_reviews, "document_followup": followup, "payment": payment}
 
 @router.post("/claims/{claim_id}/verify-documents")
 def verify(claim_id: int, payload: DocumentVerify, user=Depends(require_roles("intake_agent", "risk_manager"))):
